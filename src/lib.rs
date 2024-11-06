@@ -56,16 +56,16 @@ impl Display for Rule {
         write!(f, "{}", self.head)?;
         // Write the body
         if !self.body.is_empty() {
-            write!(f, " :-\n")?;
+            writeln!(f, " :-")?;
             let last_atom_position = self.body.len() - 1;
             for (position, atom) in self.body.iter().enumerate() {
                 write!(f, "  {}", atom)?;
                 if position != last_atom_position {
-                    write!(f, ",\n")?;
+                    writeln!(f, ",")?;
                 }
             }
         }
-        write!(f, ".\n")
+        writeln!(f, ".")
     }
 }
 
