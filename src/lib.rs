@@ -1,6 +1,8 @@
-use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
-use std::ops::{Deref, DerefMut};
+extern crate alloc;
+
+use core::fmt::{Display, Formatter};
+use core::ops::{Deref, DerefMut};
+use hashbrown::HashSet;
 
 mod parsing;
 
@@ -67,7 +69,7 @@ impl Display for Rule {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Atom {
     pub pred_sym: String,
     pub terms: Vec<Term>,
@@ -150,10 +152,10 @@ impl Deref for Program {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct KnowledgeBase(pub Vec<Atom>);
+pub struct KnowledgeBase(pub HashSet<Atom>);
 
 impl Deref for KnowledgeBase {
-    type Target = Vec<Atom>;
+    type Target = HashSet<Atom>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -330,10 +332,37 @@ mod tests {
         ]);
 
         let program = Program(rules);
-        solve(&program);
+        let result = solve(&program);
 
-        eprintln!("{}", &program);
-        panic!();
+        // Create expected knowledge base with both adviser and academicAncestor facts
+        let mut expected_atoms = advisers
+            .iter()
+            .map(|(adviser, student)| atom!("adviser", symbol!(adviser), symbol!(student)))
+            .collect::<HashSet<_>>();
+
+        // Add expected academic ancestor relationships
+        // This should include both direct adviser relationships and transitive relationships
+        let academic_ancestors = [
+            ("Andrew Rice", "Mistral Contrastin"),
+            ("Andy Hopper", "Andrew Rice"),
+            ("Andy Hopper", "Mistral Contrastin"),
+            ("Alan Mycroft", "Dominic Orchard"),
+            ("David Wheeler", "Andy Hopper"),
+            ("David Wheeler", "Andrew Rice"),
+            ("David Wheeler", "Mistral Contrastin"),
+            ("Rod Burstall", "Alan Mycroft"),
+            ("Rod Burstall", "Dominic Orchard"),
+            ("Robin Milner", "Alan Mycroft"),
+            ("Robin Milner", "Dominic Orchard"),
+        ];
+
+        expected_atoms.extend(academic_ancestors.iter().map(|(ancestor, descendant)| {
+            atom!("academicAncestor", symbol!(ancestor), symbol!(descendant))
+        }));
+
+        let expected = KnowledgeBase(expected_atoms);
+
+        assert_eq!(result, expected);
     }
 
     #[test]
