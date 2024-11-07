@@ -366,6 +366,74 @@ mod tests {
     }
 
     #[test]
+    fn family_tree() {
+        // Define direct parent relationships
+        let parents = [
+            ("Alice", "Bob"),   // Alice is Bob's parent
+            ("Alice", "Carol"), // Alice is Carol's parent
+            ("David", "Alice"), // David is Alice's parent
+            ("Eve", "Alice"),   // Eve is Alice's parent
+            ("Frank", "David"), // Frank is David's parent
+            ("Grace", "David"), // Grace is David's parent
+        ];
+
+        // Create parent facts
+        let mut rules: Vec<_> = parents
+            .iter()
+            .map(|(parent, child)| rule!(atom!("parent", symbol!(parent), symbol!(child))))
+            .collect();
+
+        // Add rules for ancestor relationship:
+        // 1. Direct parent is an ancestor
+        // 2. Parent of an ancestor is also an ancestor (transitivity)
+        rules.extend(vec![
+            rule!(atom!("ancestor", var!("X"), var!("Y")) =>
+                atom!("parent", var!("X"), var!("Y"))),
+            rule!(atom!("ancestor", var!("X"), var!("Z")) =>
+                atom!("parent", var!("X"), var!("Y")),
+                atom!("ancestor", var!("Y"), var!("Z"))),
+        ]);
+
+        let program = Program(rules);
+        let result = solve(&program);
+
+        // Create expected knowledge base with both parent and ancestor facts
+        let mut expected_atoms = parents
+            .iter()
+            .map(|(parent, child)| atom!("parent", symbol!(parent), symbol!(child)))
+            .collect::<HashSet<_>>();
+
+        // Add expected ancestor relationships
+        // This includes both direct parent relationships and ancestral relationships
+        let ancestors = [
+            ("Alice", "Bob"),   // Direct parent
+            ("Alice", "Carol"), // Direct parent
+            ("David", "Alice"), // Direct parent
+            ("David", "Bob"),   // Grandparent
+            ("David", "Carol"), // Grandparent
+            ("Eve", "Alice"),   // Direct parent
+            ("Eve", "Bob"),     // Grandparent
+            ("Eve", "Carol"),   // Grandparent
+            ("Frank", "David"), // Direct parent
+            ("Frank", "Alice"), // Grandparent
+            ("Frank", "Bob"),   // Great-grandparent
+            ("Frank", "Carol"), // Great-grandparent
+            ("Grace", "David"), // Direct parent
+            ("Grace", "Alice"), // Grandparent
+            ("Grace", "Bob"),   // Great-grandparent
+            ("Grace", "Carol"), // Great-grandparent
+        ];
+
+        expected_atoms.extend(ancestors.iter().map(|(ancestor, descendant)| {
+            atom!("ancestor", symbol!(ancestor), symbol!(descendant))
+        }));
+
+        let expected = KnowledgeBase(expected_atoms);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
     fn test_substitute() {
         let atom = Atom {
             pred_sym: "academicAncestor".to_string(),
@@ -730,5 +798,58 @@ mod tests {
         let program = Program(rules);
 
         assert_eq!(parse(program_text).unwrap().1, program)
+    }
+
+    #[test]
+    fn test_cyclic_rules() {
+        let program = Program(vec![
+            rule!(atom!("cycle", var!("X"), var!("Y")) =>
+                atom!("cycle", var!("Y"), var!("X"))),
+            rule!(atom!("cycle", symbol!("a"), symbol!("b"))),
+        ]);
+
+        let result = solve(&program);
+
+        let expected = KnowledgeBase(
+            vec![
+                atom!("cycle", symbol!("a"), symbol!("b")),
+                atom!("cycle", symbol!("b"), symbol!("a")),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_empty_program() {
+        let program = Program(vec![]);
+        let result = solve(&program);
+        assert_eq!(result, KnowledgeBase::default());
+    }
+
+    #[test]
+    fn test_multiple_var_occurrences() {
+        let program = Program(vec![
+            rule!(atom!("same", symbol!("a"), symbol!("a"))),
+            rule!(atom!("same", symbol!("b"), symbol!("b"))),
+            // Rule: reflexive(X, X) :- same(X, X)
+            rule!(atom!("reflexive", var!("X"), var!("X")) =>
+                atom!("same", var!("X"), var!("X"))),
+        ]);
+
+        let result = solve(&program);
+
+        let expected_atoms = vec![
+            atom!("same", symbol!("a"), symbol!("a")),
+            atom!("same", symbol!("b"), symbol!("b")),
+            atom!("reflexive", symbol!("a"), symbol!("a")),
+            atom!("reflexive", symbol!("b"), symbol!("b")),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(result.0, expected_atoms);
     }
 }
