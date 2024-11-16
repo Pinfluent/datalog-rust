@@ -1,4 +1,5 @@
 use crate::*;
+use alloc::format;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alphanumeric0, multispace0, satisfy};
@@ -71,6 +72,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString as _;
+
     use super::*;
 
     #[test]
