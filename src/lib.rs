@@ -1,5 +1,8 @@
 extern crate alloc;
 
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
 use core::ops::{Deref, DerefMut};
 use hashbrown::HashSet;
@@ -52,7 +55,7 @@ impl Rule {
 }
 
 impl Display for Rule {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.head)?;
         // Write the body
         if !self.body.is_empty() {
@@ -86,7 +89,7 @@ macro_rules! atom {
 }
 
 impl Display for Atom {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.pred_sym)?;
         if !self.terms.is_empty() {
             write!(f, "(")?;
@@ -123,7 +126,7 @@ macro_rules! symbol {
 }
 
 impl Display for Term {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Term::Var(v) => write!(f, "{v}"),
             Term::Sym(s) => write!(f, "{s:?}"),
@@ -135,7 +138,7 @@ impl Display for Term {
 pub struct Program(pub Vec<Rule>);
 
 impl Display for Program {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         for rule in &self.0 {
             write!(f, "{}", rule)?;
         }
@@ -294,6 +297,8 @@ pub fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
 
 #[cfg(test)]
 mod tests {
+    use alloc::{format, string::ToString as _};
+
     use super::*;
 
     #[test]
