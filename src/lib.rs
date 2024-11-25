@@ -144,6 +144,22 @@ pub struct Program {
     rules: Vec<Rule>,
 }
 
+impl Program {
+    pub fn solve(&self) -> KnowledgeBase {
+        // NOTE: We need to check range restriction
+        assert!(
+            self.rules.iter().all(Rule::is_range_restricted),
+            "all rules must be range-restricted"
+        );
+
+        let mut kb = KnowledgeBase::default();
+        while let Some(new_kb) = immediate_consequence(self, &kb) {
+            kb = new_kb
+        }
+        kb
+    }
+}
+
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         for rule in &self.rules {
@@ -181,21 +197,7 @@ impl DerefMut for Substitution {
     }
 }
 
-pub fn solve(program: &Program) -> KnowledgeBase {
-    // NOTE: We need to check range restriction
-    assert!(
-        program.rules.iter().all(Rule::is_range_restricted),
-        "all rules must be range-restricted"
-    );
-
-    let mut kb = KnowledgeBase::default();
-    while let Some(new_kb) = immediate_consequence(program, &kb) {
-        kb = new_kb
-    }
-    kb
-}
-
-pub fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<KnowledgeBase> {
+fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<KnowledgeBase> {
     let mut new_knowledge = vec![];
     for atom in program
         .rules
@@ -206,21 +208,18 @@ pub fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<Kn
             new_knowledge.push(atom);
         }
     }
-    if new_knowledge.is_empty() {
-        None
-    } else {
-        Some(KnowledgeBase {
-            atoms: kb
-                .atoms
-                .iter()
-                .chain(new_knowledge.iter())
-                .cloned()
-                .collect(),
-        })
-    }
+
+    (!new_knowledge.is_empty()).then(|| KnowledgeBase {
+        atoms: kb
+            .atoms
+            .iter()
+            .chain(new_knowledge.iter())
+            .cloned()
+            .collect(),
+    })
 }
 
-pub fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
+fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
     KnowledgeBase {
         atoms: walk(kb, &rule.body)
             .iter()
@@ -229,7 +228,7 @@ pub fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
     }
 }
 
-pub fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
+fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
     atoms
         .iter()
         .fold(vec![Substitution::default()], |all_subs, atom| {
@@ -237,7 +236,7 @@ pub fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
         })
 }
 
-pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
+fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
     let mut new_subs = vec![];
     for substitution in all_subs {
         let down_to_earth_atom = substitute(atom, substitution);
@@ -256,7 +255,7 @@ pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> 
     new_subs
 }
 
-pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
+fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;
     }
@@ -279,7 +278,7 @@ pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
     Some(subs)
 }
 
-pub fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
+fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
     let mut atom = atom.clone();
     let terms = atom
         .terms
@@ -334,8 +333,7 @@ mod tests {
                 atom!("academicAncestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program { rules };
-        let result = solve(&program);
+        let result = Program { rules }.solve();
 
         // Create expected knowledge base with both adviser and academicAncestor facts
         let mut expected_atoms = advisers
@@ -399,8 +397,7 @@ mod tests {
                 atom!("ancestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program { rules };
-        let result = solve(&program);
+        let result = Program { rules }.solve();
 
         // Create expected knowledge base with both parent and ancestor facts
         let mut expected_atoms = parents
@@ -776,7 +773,7 @@ mod tests {
             }],
         };
 
-        let _ = solve(&program);
+        let _ = program.solve();
     }
 
     #[test]
@@ -819,7 +816,7 @@ mod tests {
             ],
         };
 
-        let result = solve(&program);
+        let result = program.solve();
 
         let expected = KnowledgeBase {
             atoms: vec![
@@ -835,8 +832,7 @@ mod tests {
 
     #[test]
     fn test_empty_program() {
-        let program = Program { rules: vec![] };
-        let result = solve(&program);
+        let result = Program { rules: vec![] }.solve();
         assert_eq!(result, KnowledgeBase::default());
     }
 
@@ -852,7 +848,7 @@ mod tests {
             ],
         };
 
-        let result = solve(&program);
+        let result = program.solve();
 
         let expected_atoms = vec![
             atom!("same", symbol!("a"), symbol!("a")),
