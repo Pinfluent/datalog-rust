@@ -145,6 +145,20 @@ impl Substitution {
     pub fn lookup(&self, key: &Term) -> Option<&Term> {
         self.0.iter().find_map(|(k, v)| (k == key).then_some(v))
     }
+
+    fn apply(&self, atom: &Atom) -> Atom {
+        let mut atom = atom.clone();
+        let terms = atom
+            .terms
+            .iter()
+            .map(|term| match term {
+                v @ Term::Var(_) => self.lookup(v).cloned().unwrap_or_else(|| v.clone()),
+                Term::Sym(_) => term.clone(),
+            })
+            .collect();
+        atom.terms = terms;
+        atom
+    }
 }
 
 impl Deref for Substitution {
@@ -165,7 +179,7 @@ fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
     KnowledgeBase {
         atoms: walk(kb, &rule.body)
             .iter()
-            .map(|subs| substitute(&rule.head, subs))
+            .map(|subs| subs.apply(&rule.head))
             .collect(),
     }
 }
@@ -181,7 +195,7 @@ fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
 fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
     let mut new_subs = vec![];
     for substitution in all_subs {
-        let down_to_earth_atom = substitute(atom, substitution);
+        let down_to_earth_atom = substitution.apply(atom);
         for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
                 new_subs.push(Substitution(
@@ -218,20 +232,6 @@ fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
         }
     }
     Some(subs)
-}
-
-fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
-    let mut atom = atom.clone();
-    let terms = atom
-        .terms
-        .iter()
-        .map(|term| match term {
-            v @ Term::Var(_) => substitution.lookup(v).cloned().unwrap_or_else(|| v.clone()),
-            Term::Sym(_) => term.clone(),
-        })
-        .collect();
-    atom.terms = terms;
-    atom
 }
 
 #[cfg(test)]
@@ -394,7 +394,7 @@ mod tests {
                 pred_sym: "academicAncestor".to_string(),
                 terms: vec![Term::Sym("Quinn".to_string()), Term::Var("Z".to_string())],
             },
-            substitute(&atom, &subs)
+            subs.apply(&atom)
         )
     }
 
