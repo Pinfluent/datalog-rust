@@ -32,6 +32,24 @@ macro_rules! rule {
 }
 
 impl Rule {
+    fn eval(&self, kb: &KnowledgeBase) -> KnowledgeBase {
+        KnowledgeBase {
+            atoms: self
+                .walk(kb)
+                .iter()
+                .map(|subs| subs.apply_to_atom(&self.head))
+                .collect(),
+        }
+    }
+
+    fn walk(&self, kb: &KnowledgeBase) -> Vec<Substitution> {
+        self.body
+            .iter()
+            .fold(vec![Substitution::default()], |all_subs, atom| {
+                eval_atom(kb, atom, &all_subs)
+            })
+    }
+
     /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
     fn is_range_restricted(&self) -> bool {
         let body_vars: HashSet<Term> = self
@@ -112,7 +130,7 @@ impl Program {
     /// Returns `true` if `kb' have changed.
     fn immediate_consequence(&self, kb: &mut KnowledgeBase) -> bool {
         let mut new_knowledge = vec![];
-        for atom in self.rules.iter().flat_map(|rule| eval_rule(kb, rule).atoms) {
+        for atom in self.rules.iter().flat_map(|rule| rule.eval(kb).atoms) {
             if !kb.atoms.contains(&atom) {
                 new_knowledge.push(atom);
             }
@@ -145,7 +163,7 @@ impl Substitution {
         self.mapping.get(key)
     }
 
-    fn apply(&self, atom: &Atom) -> Atom {
+    fn apply_to_atom(&self, atom: &Atom) -> Atom {
         let mut atom = atom.clone();
         let terms = atom
             .terms
@@ -160,27 +178,10 @@ impl Substitution {
     }
 }
 
-fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
-    KnowledgeBase {
-        atoms: walk(kb, &rule.body)
-            .iter()
-            .map(|subs| subs.apply(&rule.head))
-            .collect(),
-    }
-}
-
-fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
-    atoms
-        .iter()
-        .fold(vec![Substitution::default()], |all_subs, atom| {
-            eval_atom(kb, atom, &all_subs)
-        })
-}
-
 fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
     let mut new_subs = vec![];
     for substitution in all_subs {
-        let down_to_earth_atom = substitution.apply(atom);
+        let down_to_earth_atom = substitution.apply_to_atom(atom);
         for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
                 let mut new_map = substitution.mapping.clone();
@@ -378,7 +379,7 @@ mod tests {
                 pred_sym: "academicAncestor".to_string(),
                 terms: vec![Term::Sym("Quinn".to_string()), Term::Var("Z".to_string())],
             },
-            subs.apply(&atom)
+            subs.apply_to_atom(&atom)
         )
     }
 
@@ -579,7 +580,7 @@ mod tests {
                     })
                     .collect(),
             },
-            eval_rule(&kb, &rule)
+            rule.eval(&kb)
         );
     }
 
