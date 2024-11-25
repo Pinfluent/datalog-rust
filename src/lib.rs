@@ -5,8 +5,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::ops::{Deref, DerefMut};
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 
 mod parsing;
 
@@ -139,11 +138,13 @@ pub struct KnowledgeBase {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Substitution(pub Vec<(Term, Term)>);
+pub struct Substitution {
+    mapping: HashMap<Term, Term>,
+}
 
 impl Substitution {
     pub fn lookup(&self, key: &Term) -> Option<&Term> {
-        self.0.iter().find_map(|(k, v)| (k == key).then_some(v))
+        self.mapping.get(key)
     }
 
     fn apply(&self, atom: &Atom) -> Atom {
@@ -158,20 +159,6 @@ impl Substitution {
             .collect();
         atom.terms = terms;
         atom
-    }
-}
-
-impl Deref for Substitution {
-    type Target = Vec<(Term, Term)>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Substitution {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 
@@ -198,13 +185,9 @@ fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<
         let down_to_earth_atom = substitution.apply(atom);
         for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
-                new_subs.push(Substitution(
-                    substitution
-                        .iter()
-                        .cloned()
-                        .chain(extension.0.into_iter())
-                        .collect(),
-                ));
+                let mut new_map = substitution.mapping.clone();
+                new_map.extend(extension.mapping.into_iter());
+                new_subs.push(Substitution { mapping: new_map });
             }
         }
     }
@@ -223,7 +206,9 @@ fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
                 Some(s2 @ Term::Sym(_)) if s2 != s => {
                     return None;
                 }
-                _ => subs.push((v.clone(), s.clone())),
+                _ => {
+                    subs.mapping.insert(v.clone(), s.clone());
+                }
             },
             (s1 @ Term::Sym(_), s2 @ Term::Sym(_)) if s1 != s2 => {
                 return None;
@@ -385,10 +370,11 @@ mod tests {
             pred_sym: "academicAncestor".to_string(),
             terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
         };
-        let subs = Substitution(vec![(
-            Term::Var("X".to_string()),
-            Term::Sym("Quinn".to_string()),
-        )]);
+        let subs = Substitution {
+            mapping: [(Term::Var("X".to_string()), Term::Sym("Quinn".to_string()))]
+                .into_iter()
+                .collect(),
+        };
         assert_eq!(
             Atom {
                 pred_sym: "academicAncestor".to_string(),
@@ -411,10 +397,14 @@ mod tests {
         };
 
         assert_eq!(
-            Some(Substitution(vec![
-                (Term::Var("X".to_string()), Term::Sym("Alice".to_string())),
-                (Term::Var("Y".to_string()), Term::Sym("Bob".to_string()))
-            ])),
+            Some(Substitution {
+                mapping: [
+                    (Term::Var("X".to_string()), Term::Sym("Alice".to_string())),
+                    (Term::Var("Y".to_string()), Term::Sym("Bob".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            }),
             unify(&atom1, &atom2)
         );
     }
@@ -479,48 +469,68 @@ mod tests {
         };
 
         let all_subs = vec![
-            Substitution(vec![(
-                Term::Var("X".to_string()),
-                Term::Sym("David Wheeler".to_string()),
-            )]),
-            Substitution(vec![(
-                Term::Var("Y".to_string()),
-                Term::Sym("Alan Mycroft".to_string()),
-            )]),
+            Substitution {
+                mapping: [(
+                    Term::Var("X".to_string()),
+                    Term::Sym("David Wheeler".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [(
+                    Term::Var("Y".to_string()),
+                    Term::Sym("Alan Mycroft".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            },
         ];
 
         assert_eq!(
             vec![
-                Substitution(vec![
-                    (
-                        Term::Var("X".to_string()),
-                        Term::Sym("David Wheeler".to_string()),
-                    ),
-                    (
-                        Term::Var("Y".to_string()),
-                        Term::Sym("Andy Hopper".to_string()),
-                    ),
-                ],),
-                Substitution(vec![
-                    (
-                        Term::Var("Y".to_string(),),
-                        Term::Sym("Alan Mycroft".to_string(),),
-                    ),
-                    (
-                        Term::Var("X".to_string(),),
-                        Term::Sym("Rod Burstall".to_string(),),
-                    ),
-                ],),
-                Substitution(vec![
-                    (
-                        Term::Var("Y".to_string(),),
-                        Term::Sym("Alan Mycroft".to_string(),),
-                    ),
-                    (
-                        Term::Var("X".to_string(),),
-                        Term::Sym("Robin Milner".to_string(),),
-                    ),
-                ],),
+                Substitution {
+                    mapping: [
+                        (
+                            Term::Var("X".to_string()),
+                            Term::Sym("David Wheeler".to_string()),
+                        ),
+                        (
+                            Term::Var("Y".to_string()),
+                            Term::Sym("Andy Hopper".to_string()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                },
+                Substitution {
+                    mapping: [
+                        (
+                            Term::Var("Y".to_string(),),
+                            Term::Sym("Alan Mycroft".to_string(),),
+                        ),
+                        (
+                            Term::Var("X".to_string(),),
+                            Term::Sym("Rod Burstall".to_string(),),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                },
+                Substitution {
+                    mapping: [
+                        (
+                            Term::Var("Y".to_string(),),
+                            Term::Sym("Alan Mycroft".to_string(),),
+                        ),
+                        (
+                            Term::Var("X".to_string(),),
+                            Term::Sym("Robin Milner".to_string(),),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                },
             ],
             eval_atom(&kb, &atom, &all_subs)
         )
