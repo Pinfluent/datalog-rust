@@ -11,7 +11,7 @@ use nom::IResult;
 
 pub fn parse(text: &str) -> IResult<&str, Program> {
     let (text, rules) = many0(ws(rule))(text)?;
-    Ok((text, Program(rules)))
+    Ok((text, Program { rules }))
 }
 
 fn rule(text: &str) -> IResult<&str, Rule> {

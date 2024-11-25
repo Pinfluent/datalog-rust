@@ -137,38 +137,27 @@ impl Display for Term {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Program(pub Vec<Rule>);
+pub struct Program {
+    rules: Vec<Rule>,
+}
 
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        for rule in &self.0 {
+        for rule in &self.rules {
             write!(f, "{}", rule)?;
         }
         Ok(())
     }
 }
 
-impl Deref for Program {
-    type Target = Vec<Rule>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct KnowledgeBase(pub HashSet<Atom>);
-
-impl Deref for KnowledgeBase {
-    type Target = HashSet<Atom>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+pub struct KnowledgeBase {
+    pub atoms: HashSet<Atom>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Substitution(pub Vec<(Term, Term)>);
+
 impl Substitution {
     pub fn lookup(&self, key: &Term) -> Option<&Term> {
         self.0.iter().find_map(|(k, v)| (k == key).then_some(v))
@@ -192,7 +181,7 @@ impl DerefMut for Substitution {
 pub fn solve(program: &Program) -> KnowledgeBase {
     // NOTE: We need to check range restriction
     assert!(
-        program.0.iter().all(Rule::is_range_restricted),
+        program.rules.iter().all(Rule::is_range_restricted),
         "all rules must be range-restricted"
     );
 
@@ -205,27 +194,36 @@ pub fn solve(program: &Program) -> KnowledgeBase {
 
 pub fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<KnowledgeBase> {
     let mut new_knowledge = vec![];
-    for atom in program.iter().flat_map(|rule| eval_rule(kb, rule).0) {
-        if !kb.contains(&atom) {
+    for atom in program
+        .rules
+        .iter()
+        .flat_map(|rule| eval_rule(kb, rule).atoms)
+    {
+        if !kb.atoms.contains(&atom) {
             new_knowledge.push(atom);
         }
     }
     if new_knowledge.is_empty() {
         None
     } else {
-        Some(KnowledgeBase(
-            kb.iter().chain(new_knowledge.iter()).cloned().collect(),
-        ))
+        Some(KnowledgeBase {
+            atoms: kb
+                .atoms
+                .iter()
+                .chain(new_knowledge.iter())
+                .cloned()
+                .collect(),
+        })
     }
 }
 
 pub fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
-    KnowledgeBase(
-        walk(kb, &rule.body)
+    KnowledgeBase {
+        atoms: walk(kb, &rule.body)
             .iter()
             .map(|subs| substitute(&rule.head, subs))
             .collect(),
-    )
+    }
 }
 
 pub fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
@@ -240,7 +238,7 @@ pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> 
     let mut new_subs = vec![];
     for substitution in all_subs {
         let down_to_earth_atom = substitute(atom, substitution);
-        for entry in kb.iter() {
+        for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
                 new_subs.push(Substitution(
                     substitution
@@ -333,7 +331,7 @@ mod tests {
                 atom!("academicAncestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
+        let program = Program { rules };
         let result = solve(&program);
 
         // Create expected knowledge base with both adviser and academicAncestor facts
@@ -362,7 +360,9 @@ mod tests {
             atom!("academicAncestor", symbol!(ancestor), symbol!(descendant))
         }));
 
-        let expected = KnowledgeBase(expected_atoms);
+        let expected = KnowledgeBase {
+            atoms: expected_atoms,
+        };
 
         assert_eq!(result, expected);
     }
@@ -396,7 +396,7 @@ mod tests {
                 atom!("ancestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
+        let program = Program { rules };
         let result = solve(&program);
 
         // Create expected knowledge base with both parent and ancestor facts
@@ -430,7 +430,9 @@ mod tests {
             atom!("ancestor", symbol!(ancestor), symbol!(descendant))
         }));
 
-        let expected = KnowledgeBase(expected_atoms);
+        let expected = KnowledgeBase {
+            atoms: expected_atoms,
+        };
 
         assert_eq!(result, expected);
     }
@@ -516,8 +518,8 @@ mod tests {
             ("Robin Milner", "Alan Mycroft"),
         ];
 
-        let kb = KnowledgeBase(
-            advisers
+        let kb = KnowledgeBase {
+            atoms: advisers
                 .iter()
                 .map(|(adviser, student)| Atom {
                     pred_sym: "adviser".to_string(),
@@ -527,7 +529,7 @@ mod tests {
                     ],
                 })
                 .collect(),
-        );
+        };
 
         let atom = Atom {
             pred_sym: "adviser".to_string(),
@@ -593,8 +595,8 @@ mod tests {
             ("Robin Milner", "Alan Mycroft"),
         ];
 
-        let kb = KnowledgeBase(
-            advisers
+        let kb = KnowledgeBase {
+            atoms: advisers
                 .iter()
                 .map(|(adviser, student)| Atom {
                     pred_sym: "adviser".to_string(),
@@ -604,7 +606,7 @@ mod tests {
                     ],
                 })
                 .collect(),
-        );
+        };
 
         let rule = Rule {
             head: Atom {
@@ -618,15 +620,15 @@ mod tests {
         };
 
         assert_eq!(
-            KnowledgeBase(
-                advisers
+            KnowledgeBase {
+                atoms: advisers
                     .iter()
                     .map(|(adviser, _)| Atom {
                         pred_sym: "onlyAdvisor".to_string(),
                         terms: vec![Term::Sym(adviser.to_string()),],
                     })
                     .collect(),
-            ),
+            },
             eval_rule(&kb, &rule)
         );
     }
@@ -723,7 +725,7 @@ mod tests {
             "academicAncestor(X, Y) :-\n  adviser(X, Y).\nacademicAncestor(X, Z) :-\n  adviser(X, Y),\n  academicAncestor(Y, Z).\n",
             &format!(
                 "{}",
-                Program(vec![
+                Program { rules: vec![
                     Rule {
                         head: Atom {
                             pred_sym: "academicAncestor".to_string(),
@@ -750,7 +752,7 @@ mod tests {
                             },
                         ],
                     },
-                ])
+                ]}
             )
         );
     }
@@ -758,16 +760,18 @@ mod tests {
     #[test]
     #[should_panic = "all rules must be range-restricted"]
     fn rules_are_range_restricted() {
-        let program: Program = Program(vec![Rule {
-            head: Atom {
-                pred_sym: "rangeUnrestricted".to_string(),
-                terms: vec![Term::Var("X".to_string())],
-            },
-            body: vec![Atom {
-                pred_sym: "rangeUnrestricted".to_string(),
-                terms: vec![Term::Var("Y".to_string())],
+        let program: Program = Program {
+            rules: vec![Rule {
+                head: Atom {
+                    pred_sym: "rangeUnrestricted".to_string(),
+                    terms: vec![Term::Var("X".to_string())],
+                },
+                body: vec![Atom {
+                    pred_sym: "rangeUnrestricted".to_string(),
+                    terms: vec![Term::Var("Y".to_string())],
+                }],
             }],
-        }]);
+        };
 
         let _ = solve(&program);
     }
@@ -797,49 +801,53 @@ mod tests {
                 atom!("academicAncestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
+        let program = Program { rules };
 
         assert_eq!(parse(program_text).unwrap().1, program)
     }
 
     #[test]
     fn test_cyclic_rules() {
-        let program = Program(vec![
-            rule!(atom!("cycle", var!("X"), var!("Y")) =>
+        let program = Program {
+            rules: vec![
+                rule!(atom!("cycle", var!("X"), var!("Y")) =>
                 atom!("cycle", var!("Y"), var!("X"))),
-            rule!(atom!("cycle", symbol!("a"), symbol!("b"))),
-        ]);
+                rule!(atom!("cycle", symbol!("a"), symbol!("b"))),
+            ],
+        };
 
         let result = solve(&program);
 
-        let expected = KnowledgeBase(
-            vec![
+        let expected = KnowledgeBase {
+            atoms: vec![
                 atom!("cycle", symbol!("a"), symbol!("b")),
                 atom!("cycle", symbol!("b"), symbol!("a")),
             ]
             .into_iter()
             .collect(),
-        );
+        };
 
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_empty_program() {
-        let program = Program(vec![]);
+        let program = Program { rules: vec![] };
         let result = solve(&program);
         assert_eq!(result, KnowledgeBase::default());
     }
 
     #[test]
     fn test_multiple_var_occurrences() {
-        let program = Program(vec![
-            rule!(atom!("same", symbol!("a"), symbol!("a"))),
-            rule!(atom!("same", symbol!("b"), symbol!("b"))),
-            // Rule: reflexive(X, X) :- same(X, X)
-            rule!(atom!("reflexive", var!("X"), var!("X")) =>
+        let program = Program {
+            rules: vec![
+                rule!(atom!("same", symbol!("a"), symbol!("a"))),
+                rule!(atom!("same", symbol!("b"), symbol!("b"))),
+                // Rule: reflexive(X, X) :- same(X, X)
+                rule!(atom!("reflexive", var!("X"), var!("X")) =>
                 atom!("same", var!("X"), var!("X"))),
-        ]);
+            ],
+        };
 
         let result = solve(&program);
 
@@ -852,6 +860,6 @@ mod tests {
         .into_iter()
         .collect();
 
-        assert_eq!(result.0, expected_atoms);
+        assert_eq!(result.atoms, expected_atoms);
     }
 }
