@@ -191,16 +191,11 @@ impl DerefMut for Substitution {
 
 pub fn solve(program: &Program) -> KnowledgeBase {
     // NOTE: We need to check range restriction
-    assert_eq!(
-        <Vec<Rule>>::new(),
-        program
-            .0
-            .iter()
-            .filter(|rule| !rule.is_range_restricted())
-            .cloned()
-            .collect::<Vec<_>>(),
+    assert!(
+        program.0.iter().all(Rule::is_range_restricted),
         "all rules must be range-restricted"
     );
+
     let mut kb = KnowledgeBase::default();
     while let Some(new_kb) = immediate_consequence(program, &kb) {
         kb = new_kb
