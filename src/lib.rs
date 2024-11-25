@@ -36,6 +36,7 @@ macro_rules! rule {
 }
 
 impl Rule {
+    /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
     fn is_range_restricted(&self) -> bool {
         let body_vars: HashSet<Term> = self
             .body
@@ -44,15 +45,17 @@ impl Rule {
             .filter(|term| matches!(term, Term::Var(_)))
             .collect();
 
-        let head_vars: HashSet<Term> = self
-            .head
-            .terms
-            .iter()
-            .filter(|term| matches!(term, Term::Var(_)))
-            .cloned()
-            .collect();
+        for term in &self.head.terms {
+            if !matches!(term, Term::Var(_)) {
+                continue;
+            }
 
-        head_vars.is_subset(&body_vars)
+            if !body_vars.contains(term) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
