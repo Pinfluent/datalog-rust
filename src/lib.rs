@@ -153,10 +153,28 @@ impl Program {
         );
 
         let mut kb = KnowledgeBase::default();
-        while let Some(new_kb) = immediate_consequence(self, &kb) {
-            kb = new_kb
-        }
+        while self.immediate_consequence(&mut kb) {}
         kb
+    }
+
+    /// Returns `true` if `kb' have changed.
+    fn immediate_consequence(&self, kb: &mut KnowledgeBase) -> bool {
+        let mut new_knowledge = vec![];
+        for atom in self.rules.iter().flat_map(|rule| eval_rule(kb, rule).atoms) {
+            if !kb.atoms.contains(&atom) {
+                new_knowledge.push(atom);
+            }
+        }
+
+        if !new_knowledge.is_empty() {
+            for new_atom in new_knowledge {
+                kb.atoms.insert(new_atom);
+            }
+
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -195,28 +213,6 @@ impl DerefMut for Substitution {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
-}
-
-fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<KnowledgeBase> {
-    let mut new_knowledge = vec![];
-    for atom in program
-        .rules
-        .iter()
-        .flat_map(|rule| eval_rule(kb, rule).atoms)
-    {
-        if !kb.atoms.contains(&atom) {
-            new_knowledge.push(atom);
-        }
-    }
-
-    (!new_knowledge.is_empty()).then(|| KnowledgeBase {
-        atoms: kb
-            .atoms
-            .iter()
-            .chain(new_knowledge.iter())
-            .cloned()
-            .collect(),
-    })
 }
 
 fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
