@@ -2,9 +2,7 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{string::String, vec, vec::Vec};
 use hashbrown::{HashMap, HashSet};
 
 mod parsing;
