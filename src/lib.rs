@@ -5,7 +5,6 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::fmt::{Display, Formatter};
 use core::ops::{Deref, DerefMut};
 use hashbrown::HashSet;
 
@@ -59,24 +58,6 @@ impl Rule {
     }
 }
 
-impl Display for Rule {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.head)?;
-        // Write the body
-        if !self.body.is_empty() {
-            writeln!(f, " :-")?;
-            let last_atom_position = self.body.len() - 1;
-            for (position, atom) in self.body.iter().enumerate() {
-                write!(f, "  {}", atom)?;
-                if position != last_atom_position {
-                    writeln!(f, ",")?;
-                }
-            }
-        }
-        writeln!(f, ".")
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Atom {
     pub pred_sym: String,
@@ -91,23 +72,6 @@ macro_rules! atom {
             terms: vec![$($term),*]
         }
     };
-}
-
-impl Display for Atom {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.pred_sym)?;
-        if !self.terms.is_empty() {
-            write!(f, "(")?;
-            for (position, term) in self.terms.iter().enumerate() {
-                if position != 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{term}")?;
-            }
-            write!(f, ")")?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -128,15 +92,6 @@ macro_rules! symbol {
     ($name:expr) => {
         Term::Sym($name.to_string())
     };
-}
-
-impl Display for Term {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Term::Var(v) => write!(f, "{v}"),
-            Term::Sym(s) => write!(f, "{s:?}"),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,15 +130,6 @@ impl Program {
         } else {
             false
         }
-    }
-}
-
-impl Display for Program {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        for rule in &self.rules {
-            write!(f, "{}", rule)?;
-        }
-        Ok(())
     }
 }
 
@@ -290,7 +236,7 @@ fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
 
 #[cfg(test)]
 mod tests {
-    use alloc::{format, string::ToString as _};
+    use alloc::string::ToString as _;
 
     use super::*;
 
@@ -626,130 +572,6 @@ mod tests {
                     .collect(),
             },
             eval_rule(&kb, &rule)
-        );
-    }
-
-    #[test]
-    fn display_impls() {
-        // Terms
-        assert_eq!("Var", &format!("{}", Term::Var("Var".to_string())));
-        assert_eq!(
-            "\"A string\"",
-            &format!("{}", Term::Sym("A string".to_string()))
-        );
-
-        // Atoms
-        assert_eq!(
-            "is_true",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "is_true".to_string(),
-                    terms: vec![]
-                }
-            )
-        );
-        assert_eq!(
-            "singleton(V)",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "singleton".to_string(),
-                    terms: vec![Term::Var("V".to_string())]
-                }
-            )
-        );
-        assert_eq!(
-            "adviser(\"Andrew Rice\", \"Mistral Contrastin\")",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "adviser".to_string(),
-                    terms: vec![
-                        Term::Sym("Andrew Rice".to_string()),
-                        Term::Sym("Mistral Contrastin".to_string()),
-                    ],
-                }
-            )
-        );
-
-        // academicAncestor(X,Y) :-
-        //   adviser(X,Y).
-        assert_eq!(
-            "academicAncestor(X, Y) :-\n  adviser(X, Y).\n",
-            &format!(
-                "{}",
-                Rule {
-                    head: Atom {
-                        pred_sym: "academicAncestor".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                    },
-                    body: vec![Atom {
-                        pred_sym: "adviser".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                    }],
-                }
-            )
-        );
-        // academicAncestor(X,Z) :-
-        //   adviser(X,Y),
-        //   academicAncestor(Y,Z).
-        assert_eq!(
-            "academicAncestor(X, Z) :-\n  adviser(X, Y),\n  academicAncestor(Y, Z).\n",
-            &format!(
-                "{}",
-                Rule {
-                    head: Atom {
-                        pred_sym: "academicAncestor".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
-                    },
-                    body: vec![
-                        Atom {
-                            pred_sym: "adviser".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        },
-                        Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("Y".to_string()), Term::Var("Z".to_string())],
-                        },
-                    ],
-                }
-            )
-        );
-
-        assert_eq!(
-            "academicAncestor(X, Y) :-\n  adviser(X, Y).\nacademicAncestor(X, Z) :-\n  adviser(X, Y),\n  academicAncestor(Y, Z).\n",
-            &format!(
-                "{}",
-                Program { rules: vec![
-                    Rule {
-                        head: Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        },
-                        body: vec![Atom {
-                            pred_sym: "adviser".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        }],
-                    },
-                    Rule {
-                        head: Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
-                        },
-                        body: vec![
-                            Atom {
-                                pred_sym: "adviser".to_string(),
-                                terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                            },
-                            Atom {
-                                pred_sym: "academicAncestor".to_string(),
-                                terms: vec![Term::Var("Y".to_string()), Term::Var("Z".to_string())],
-                            },
-                        ],
-                    },
-                ]}
-            )
         );
     }
 
