@@ -26,19 +26,15 @@ impl Rule {
     pub fn eval(&self, kb: &KnowledgeBase) -> KnowledgeBase {
         KnowledgeBase {
             atoms: self
-                .walk(kb)
+                .body
+                .iter()
+                .fold(vec![Substitution::default()], |all_subs, atom| {
+                    eval_atom(kb, atom, &all_subs)
+                })
                 .iter()
                 .map(|subs| subs.apply_to_atom(&self.head))
                 .collect(),
         }
-    }
-
-    fn walk(&self, kb: &KnowledgeBase) -> Vec<Substitution> {
-        self.body
-            .iter()
-            .fold(vec![Substitution::default()], |all_subs, atom| {
-                eval_atom(kb, atom, &all_subs)
-            })
     }
 
     /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
@@ -66,8 +62,10 @@ impl Rule {
 
 pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
     let mut new_subs = vec![];
+
     for substitution in all_subs {
         let down_to_earth_atom = substitution.apply_to_atom(atom);
+
         for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
                 let mut new_map = substitution.mapping.clone();
@@ -76,30 +74,40 @@ pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> 
             }
         }
     }
+
     new_subs
 }
 
+/// None means contradiction. Some means that we've found valid substitutions.
 pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;
     }
+
     let mut subs = Substitution::default();
-    for pair in a.terms.iter().zip(b.terms.iter()) {
-        match pair {
-            (_, Term::Var(_)) => panic!("The second atom is assumed to be ground"),
-            (v @ Term::Var(_), s @ Term::Sym(_)) => match subs.lookup(v) {
-                Some(s2 @ Term::Sym(_)) if s2 != s => {
-                    return None;
+    for (a_term, b_term) in a.terms.iter().zip(b.terms.iter()) {
+        if matches!(b_term, Term::Var(_)) {
+            panic!("The second atom is assumed to be ground")
+        }
+
+        match a_term {
+            &Term::Var(_) => {
+                let substituted = subs.lookup(a_term);
+                match substituted {
+                    Some(a_term @ Term::Sym(_)) if a_term != b_term => {
+                        return None;
+                    }
+                    _ => {
+                        subs.mapping.insert(a_term.clone(), b_term.clone());
+                    }
                 }
-                _ => {
-                    subs.mapping.insert(v.clone(), s.clone());
-                }
-            },
-            (s1 @ Term::Sym(_), s2 @ Term::Sym(_)) if s1 != s2 => {
+            }
+            &Term::Sym(_) if a_term != b_term => {
                 return None;
             }
             _ => {}
         }
     }
+
     Some(subs)
 }
