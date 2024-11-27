@@ -2,77 +2,11 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec;
-use alloc::vec::Vec;
-use core::fmt::{Display, Formatter};
-use core::ops::{Deref, DerefMut};
-use hashbrown::HashSet;
+use alloc::{string::String, vec, vec::Vec};
+use hashbrown::{HashMap, HashSet};
 
+#[cfg(any(feature = "parsing", test))]
 mod parsing;
-
-pub use parsing::parse;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Rule {
-    pub head: Atom,
-    pub body: Vec<Atom>,
-}
-
-#[macro_export]
-macro_rules! rule {
-    ($head:expr => $($body:expr),+) => {
-        Rule {
-            head: $head,
-            body: vec![$($body),+],
-        }
-    };
-    ($head:expr) => {
-        Rule {
-            head: $head,
-            body: vec![],
-        }
-    }
-}
-
-impl Rule {
-    fn is_range_restricted(&self) -> bool {
-        let body_vars: HashSet<Term> = self
-            .body
-            .iter()
-            .flat_map(|atom| atom.terms.clone())
-            .filter(|term| matches!(term, Term::Var(_)))
-            .collect();
-
-        let head_vars: HashSet<Term> = self
-            .head
-            .terms
-            .iter()
-            .filter(|term| matches!(term, Term::Var(_)))
-            .cloned()
-            .collect();
-
-        head_vars.is_subset(&body_vars)
-    }
-}
-
-impl Display for Rule {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.head)?;
-        // Write the body
-        if !self.body.is_empty() {
-            writeln!(f, " :-")?;
-            let last_atom_position = self.body.len() - 1;
-            for (position, atom) in self.body.iter().enumerate() {
-                write!(f, "  {}", atom)?;
-                if position != last_atom_position {
-                    writeln!(f, ",")?;
-                }
-            }
-        }
-        writeln!(f, ".")
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Atom {
@@ -88,23 +22,6 @@ macro_rules! atom {
             terms: vec![$($term),*]
         }
     };
-}
-
-impl Display for Atom {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.pred_sym)?;
-        if !self.terms.is_empty() {
-            write!(f, "(")?;
-            for (position, term) in self.terms.iter().enumerate() {
-                if position != 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{term}")?;
-            }
-            write!(f, ")")?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -127,181 +44,191 @@ macro_rules! symbol {
     };
 }
 
-impl Display for Term {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Term::Var(v) => write!(f, "{v}"),
-            Term::Sym(s) => write!(f, "{s:?}"),
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Program {
+    rules: Vec<Rule>,
+}
+
+impl Program {
+    pub fn solve(&self) -> KnowledgeBase {
+        // NOTE: We need to check range restriction
+        assert!(
+            self.rules.iter().all(Rule::is_range_restricted),
+            "all rules must be range-restricted"
+        );
+
+        let mut kb = KnowledgeBase::default();
+        loop {
+            let mut changed = false;
+            for rule in &self.rules {
+                changed = changed || rule.eval(&mut kb);
+            }
+
+            if !changed {
+                break;
+            }
         }
+
+        kb
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct KnowledgeBase {
+    pub atoms: HashSet<Atom>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Substitution {
+    mapping: HashMap<Term, Term>,
+}
+
+impl Substitution {
+    pub fn lookup(&self, key: &Term) -> Option<&Term> {
+        self.mapping.get(key)
+    }
+
+    fn apply_to_atom(&self, atom: &Atom) -> Atom {
+        let mut atom = atom.clone();
+        let terms = atom
+            .terms
+            .iter()
+            .map(|term| match term {
+                v @ Term::Var(_) => self.lookup(v).cloned().unwrap_or_else(|| v.clone()),
+                Term::Sym(_) => term.clone(),
+            })
+            .collect();
+        atom.terms = terms;
+        atom
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Program(pub Vec<Rule>);
+struct Rule {
+    head: Atom,
+    body: Vec<Atom>,
+}
 
-impl Display for Program {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        for rule in &self.0 {
-            write!(f, "{}", rule)?;
+#[macro_export]
+macro_rules! rule {
+    ($head:expr => $($body:expr),+) => {
+        Rule {
+            head: $head,
+            body: vec![$($body),+],
         }
-        Ok(())
-    }
-}
-
-impl Deref for Program {
-    type Target = Vec<Rule>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct KnowledgeBase(pub HashSet<Atom>);
-
-impl Deref for KnowledgeBase {
-    type Target = HashSet<Atom>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Substitution(pub Vec<(Term, Term)>);
-impl Substitution {
-    pub fn lookup(&self, key: &Term) -> Option<&Term> {
-        self.0.iter().find_map(|(k, v)| (k == key).then_some(v))
-    }
-}
-
-impl Deref for Substitution {
-    type Target = Vec<(Term, Term)>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Substitution {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-pub fn solve(program: &Program) -> KnowledgeBase {
-    // NOTE: We need to check range restriction
-    assert_eq!(
-        <Vec<Rule>>::new(),
-        program
-            .0
-            .iter()
-            .filter(|rule| !rule.is_range_restricted())
-            .cloned()
-            .collect::<Vec<_>>(),
-        "all rules must be range-restricted"
-    );
-    let mut kb = KnowledgeBase::default();
-    while let Some(new_kb) = immediate_consequence(program, &kb) {
-        kb = new_kb
-    }
-    kb
-}
-
-pub fn immediate_consequence(program: &Program, kb: &KnowledgeBase) -> Option<KnowledgeBase> {
-    let mut new_knowledge = vec![];
-    for atom in program.iter().flat_map(|rule| eval_rule(kb, rule).0) {
-        if !kb.contains(&atom) {
-            new_knowledge.push(atom);
+    };
+    ($head:expr) => {
+        Rule {
+            head: $head,
+            body: vec![],
         }
     }
-    if new_knowledge.is_empty() {
-        None
-    } else {
-        Some(KnowledgeBase(
-            kb.iter().chain(new_knowledge.iter()).cloned().collect(),
-        ))
+}
+
+impl Rule {
+    fn eval(&self, kb: &mut KnowledgeBase) -> bool {
+        let substitutions = self
+            .body
+            .iter()
+            .fold(vec![Substitution::default()], |all_subs, atom| {
+                eval_atom(kb, atom, all_subs)
+            });
+
+        let extension: Vec<_> = substitutions
+            .iter()
+            .map(|subs| subs.apply_to_atom(&self.head))
+            .collect();
+
+        let mut changed = false;
+        for atom in extension {
+            if !kb.atoms.contains(&atom) {
+                changed = true;
+                kb.atoms.insert(atom);
+            }
+        }
+
+        changed
+    }
+
+    /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
+    fn is_range_restricted(&self) -> bool {
+        let body_vars: HashSet<Term> = self
+            .body
+            .iter()
+            .flat_map(|atom| atom.terms.clone())
+            .filter(|term| matches!(term, Term::Var(_)))
+            .collect();
+
+        for term in &self.head.terms {
+            if !matches!(term, Term::Var(_)) {
+                continue;
+            }
+
+            if !body_vars.contains(term) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
-pub fn eval_rule(kb: &KnowledgeBase, rule: &Rule) -> KnowledgeBase {
-    KnowledgeBase(
-        walk(kb, &rule.body)
-            .iter()
-            .map(|subs| substitute(&rule.head, subs))
-            .collect(),
-    )
-}
-
-pub fn walk(kb: &KnowledgeBase, atoms: &[Atom]) -> Vec<Substitution> {
-    atoms
-        .iter()
-        .fold(vec![Substitution::default()], |all_subs, atom| {
-            eval_atom(kb, atom, &all_subs)
-        })
-}
-
-pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
+fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: Vec<Substitution>) -> Vec<Substitution> {
     let mut new_subs = vec![];
+
     for substitution in all_subs {
-        let down_to_earth_atom = substitute(atom, substitution);
-        for entry in kb.iter() {
+        let down_to_earth_atom = substitution.apply_to_atom(atom);
+
+        for entry in kb.atoms.iter() {
             if let Some(extension) = unify(&down_to_earth_atom, entry) {
-                new_subs.push(Substitution(
-                    substitution
-                        .iter()
-                        .cloned()
-                        .chain(extension.0.into_iter())
-                        .collect(),
-                ));
+                let mut new_map = substitution.mapping.clone();
+                new_map.extend(extension.mapping.into_iter());
+                new_subs.push(Substitution { mapping: new_map });
             }
         }
     }
+
     new_subs
 }
 
-pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
+fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;
     }
+
     let mut subs = Substitution::default();
-    for pair in a.terms.iter().zip(b.terms.iter()) {
-        match pair {
-            (_, Term::Var(_)) => panic!("The second atom is assumed to be ground"),
-            (v @ Term::Var(_), s @ Term::Sym(_)) => match subs.lookup(v) {
-                Some(s2 @ Term::Sym(_)) if s2 != s => {
-                    return None;
+    for (a_term, b_term) in a.terms.iter().zip(b.terms.iter()) {
+        if matches!(b_term, Term::Var(_)) {
+            panic!("The second atom is assumed to be ground")
+        }
+
+        match *a_term {
+            Term::Var(_) => {
+                let substituted = subs.lookup(a_term);
+                match substituted {
+                    Some(a_term @ Term::Sym(_)) if a_term != b_term => {
+                        return None;
+                    }
+                    _ => {
+                        subs.mapping.insert(a_term.clone(), b_term.clone());
+                    }
                 }
-                _ => subs.push((v.clone(), s.clone())),
-            },
-            (s1 @ Term::Sym(_), s2 @ Term::Sym(_)) if s1 != s2 => {
+            }
+            Term::Sym(_) if a_term != b_term => {
                 return None;
             }
             _ => {}
         }
     }
-    Some(subs)
-}
 
-pub fn substitute(atom: &Atom, substitution: &Substitution) -> Atom {
-    let mut atom = atom.clone();
-    let terms = atom
-        .terms
-        .iter()
-        .map(|term| match term {
-            v @ Term::Var(_) => substitution.lookup(v).cloned().unwrap_or_else(|| v.clone()),
-            Term::Sym(_) => term.clone(),
-        })
-        .collect();
-    atom.terms = terms;
-    atom
+    Some(subs)
 }
 
 #[cfg(test)]
 mod tests {
-    use alloc::{format, string::ToString as _};
+    use alloc::string::ToString as _;
 
-    use super::*;
+    use super::{parsing::parse, *};
 
     #[test]
     fn example() {
@@ -338,8 +265,7 @@ mod tests {
                 atom!("academicAncestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
-        let result = solve(&program);
+        let result = Program { rules }.solve();
 
         // Create expected knowledge base with both adviser and academicAncestor facts
         let mut expected_atoms = advisers
@@ -367,7 +293,9 @@ mod tests {
             atom!("academicAncestor", symbol!(ancestor), symbol!(descendant))
         }));
 
-        let expected = KnowledgeBase(expected_atoms);
+        let expected = KnowledgeBase {
+            atoms: expected_atoms,
+        };
 
         assert_eq!(result, expected);
     }
@@ -401,8 +329,7 @@ mod tests {
                 atom!("ancestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
-        let result = solve(&program);
+        let result = Program { rules }.solve();
 
         // Create expected knowledge base with both parent and ancestor facts
         let mut expected_atoms = parents
@@ -435,7 +362,9 @@ mod tests {
             atom!("ancestor", symbol!(ancestor), symbol!(descendant))
         }));
 
-        let expected = KnowledgeBase(expected_atoms);
+        let expected = KnowledgeBase {
+            atoms: expected_atoms,
+        };
 
         assert_eq!(result, expected);
     }
@@ -446,16 +375,17 @@ mod tests {
             pred_sym: "academicAncestor".to_string(),
             terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
         };
-        let subs = Substitution(vec![(
-            Term::Var("X".to_string()),
-            Term::Sym("Quinn".to_string()),
-        )]);
+        let subs = Substitution {
+            mapping: [(Term::Var("X".to_string()), Term::Sym("Quinn".to_string()))]
+                .into_iter()
+                .collect(),
+        };
         assert_eq!(
             Atom {
                 pred_sym: "academicAncestor".to_string(),
                 terms: vec![Term::Sym("Quinn".to_string()), Term::Var("Z".to_string())],
             },
-            substitute(&atom, &subs)
+            subs.apply_to_atom(&atom)
         )
     }
 
@@ -472,10 +402,14 @@ mod tests {
         };
 
         assert_eq!(
-            Some(Substitution(vec![
-                (Term::Var("X".to_string()), Term::Sym("Alice".to_string())),
-                (Term::Var("Y".to_string()), Term::Sym("Bob".to_string()))
-            ])),
+            Some(Substitution {
+                mapping: [
+                    (Term::Var("X".to_string()), Term::Sym("Alice".to_string())),
+                    (Term::Var("Y".to_string()), Term::Sym("Bob".to_string()))
+                ]
+                .into_iter()
+                .collect()
+            }),
             unify(&atom1, &atom2)
         );
     }
@@ -521,8 +455,8 @@ mod tests {
             ("Robin Milner", "Alan Mycroft"),
         ];
 
-        let kb = KnowledgeBase(
-            advisers
+        let kb = KnowledgeBase {
+            atoms: advisers
                 .iter()
                 .map(|(adviser, student)| Atom {
                     pred_sym: "adviser".to_string(),
@@ -532,7 +466,7 @@ mod tests {
                     ],
                 })
                 .collect(),
-        );
+        };
 
         let atom = Atom {
             pred_sym: "adviser".to_string(),
@@ -540,19 +474,27 @@ mod tests {
         };
 
         let all_subs = vec![
-            Substitution(vec![(
-                Term::Var("X".to_string()),
-                Term::Sym("David Wheeler".to_string()),
-            )]),
-            Substitution(vec![(
-                Term::Var("Y".to_string()),
-                Term::Sym("Alan Mycroft".to_string()),
-            )]),
+            Substitution {
+                mapping: [(
+                    Term::Var("X".to_string()),
+                    Term::Sym("David Wheeler".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [(
+                    Term::Var("Y".to_string()),
+                    Term::Sym("Alan Mycroft".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            },
         ];
 
-        assert_eq!(
-            vec![
-                Substitution(vec![
+        let expected_substitutions = [
+            Substitution {
+                mapping: [
                     (
                         Term::Var("X".to_string()),
                         Term::Sym("David Wheeler".to_string()),
@@ -561,30 +503,47 @@ mod tests {
                         Term::Var("Y".to_string()),
                         Term::Sym("Andy Hopper".to_string()),
                     ),
-                ],),
-                Substitution(vec![
+                ]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [
                     (
-                        Term::Var("Y".to_string(),),
-                        Term::Sym("Alan Mycroft".to_string(),),
+                        Term::Var("Y".to_string()),
+                        Term::Sym("Alan Mycroft".to_string()),
                     ),
                     (
-                        Term::Var("X".to_string(),),
-                        Term::Sym("Rod Burstall".to_string(),),
+                        Term::Var("X".to_string()),
+                        Term::Sym("Rod Burstall".to_string()),
                     ),
-                ],),
-                Substitution(vec![
+                ]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [
                     (
-                        Term::Var("Y".to_string(),),
-                        Term::Sym("Alan Mycroft".to_string(),),
+                        Term::Var("Y".to_string()),
+                        Term::Sym("Alan Mycroft".to_string()),
                     ),
                     (
-                        Term::Var("X".to_string(),),
-                        Term::Sym("Robin Milner".to_string(),),
+                        Term::Var("X".to_string()),
+                        Term::Sym("Robin Milner".to_string()),
                     ),
-                ],),
-            ],
-            eval_atom(&kb, &atom, &all_subs)
-        )
+                ]
+                .into_iter()
+                .collect(),
+            },
+        ];
+
+        let result = eval_atom(&kb, &atom, all_subs);
+        assert_eq!(expected_substitutions.len(), result.len());
+
+        for i in 0..result.len() {
+            assert!(result.contains(&expected_substitutions[i]));
+            assert!(expected_substitutions.contains(&result[i]));
+        }
     }
 
     #[test]
@@ -598,18 +557,20 @@ mod tests {
             ("Robin Milner", "Alan Mycroft"),
         ];
 
-        let kb = KnowledgeBase(
-            advisers
-                .iter()
-                .map(|(adviser, student)| Atom {
-                    pred_sym: "adviser".to_string(),
-                    terms: vec![
-                        Term::Sym(adviser.to_string()),
-                        Term::Sym(student.to_string()),
-                    ],
-                })
-                .collect(),
-        );
+        let adviser_facts: HashSet<_> = advisers
+            .iter()
+            .map(|(adviser, student)| Atom {
+                pred_sym: "adviser".to_string(),
+                terms: vec![
+                    Term::Sym(adviser.to_string()),
+                    Term::Sym(student.to_string()),
+                ],
+            })
+            .collect();
+
+        let mut kb = KnowledgeBase {
+            atoms: adviser_facts.clone(),
+        };
 
         let rule = Rule {
             head: Atom {
@@ -622,159 +583,39 @@ mod tests {
             }],
         };
 
+        rule.eval(&mut kb);
         assert_eq!(
-            KnowledgeBase(
-                advisers
+            KnowledgeBase {
+                atoms: advisers
                     .iter()
                     .map(|(adviser, _)| Atom {
                         pred_sym: "onlyAdvisor".to_string(),
                         terms: vec![Term::Sym(adviser.to_string()),],
                     })
+                    .chain(adviser_facts.into_iter())
                     .collect(),
-            ),
-            eval_rule(&kb, &rule)
-        );
-    }
-
-    #[test]
-    fn display_impls() {
-        // Terms
-        assert_eq!("Var", &format!("{}", Term::Var("Var".to_string())));
-        assert_eq!(
-            "\"A string\"",
-            &format!("{}", Term::Sym("A string".to_string()))
-        );
-
-        // Atoms
-        assert_eq!(
-            "is_true",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "is_true".to_string(),
-                    terms: vec![]
-                }
-            )
-        );
-        assert_eq!(
-            "singleton(V)",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "singleton".to_string(),
-                    terms: vec![Term::Var("V".to_string())]
-                }
-            )
-        );
-        assert_eq!(
-            "adviser(\"Andrew Rice\", \"Mistral Contrastin\")",
-            &format!(
-                "{}",
-                Atom {
-                    pred_sym: "adviser".to_string(),
-                    terms: vec![
-                        Term::Sym("Andrew Rice".to_string()),
-                        Term::Sym("Mistral Contrastin".to_string()),
-                    ],
-                }
-            )
-        );
-
-        // academicAncestor(X,Y) :-
-        //   adviser(X,Y).
-        assert_eq!(
-            "academicAncestor(X, Y) :-\n  adviser(X, Y).\n",
-            &format!(
-                "{}",
-                Rule {
-                    head: Atom {
-                        pred_sym: "academicAncestor".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                    },
-                    body: vec![Atom {
-                        pred_sym: "adviser".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                    }],
-                }
-            )
-        );
-        // academicAncestor(X,Z) :-
-        //   adviser(X,Y),
-        //   academicAncestor(Y,Z).
-        assert_eq!(
-            "academicAncestor(X, Z) :-\n  adviser(X, Y),\n  academicAncestor(Y, Z).\n",
-            &format!(
-                "{}",
-                Rule {
-                    head: Atom {
-                        pred_sym: "academicAncestor".to_string(),
-                        terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
-                    },
-                    body: vec![
-                        Atom {
-                            pred_sym: "adviser".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        },
-                        Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("Y".to_string()), Term::Var("Z".to_string())],
-                        },
-                    ],
-                }
-            )
-        );
-
-        assert_eq!(
-            "academicAncestor(X, Y) :-\n  adviser(X, Y).\nacademicAncestor(X, Z) :-\n  adviser(X, Y),\n  academicAncestor(Y, Z).\n",
-            &format!(
-                "{}",
-                Program(vec![
-                    Rule {
-                        head: Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        },
-                        body: vec![Atom {
-                            pred_sym: "adviser".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                        }],
-                    },
-                    Rule {
-                        head: Atom {
-                            pred_sym: "academicAncestor".to_string(),
-                            terms: vec![Term::Var("X".to_string()), Term::Var("Z".to_string())],
-                        },
-                        body: vec![
-                            Atom {
-                                pred_sym: "adviser".to_string(),
-                                terms: vec![Term::Var("X".to_string()), Term::Var("Y".to_string())],
-                            },
-                            Atom {
-                                pred_sym: "academicAncestor".to_string(),
-                                terms: vec![Term::Var("Y".to_string()), Term::Var("Z".to_string())],
-                            },
-                        ],
-                    },
-                ])
-            )
+            },
+            kb
         );
     }
 
     #[test]
     #[should_panic = "all rules must be range-restricted"]
     fn rules_are_range_restricted() {
-        let program: Program = Program(vec![Rule {
-            head: Atom {
-                pred_sym: "rangeUnrestricted".to_string(),
-                terms: vec![Term::Var("X".to_string())],
-            },
-            body: vec![Atom {
-                pred_sym: "rangeUnrestricted".to_string(),
-                terms: vec![Term::Var("Y".to_string())],
+        let program: Program = Program {
+            rules: vec![Rule {
+                head: Atom {
+                    pred_sym: "rangeUnrestricted".to_string(),
+                    terms: vec![Term::Var("X".to_string())],
+                },
+                body: vec![Atom {
+                    pred_sym: "rangeUnrestricted".to_string(),
+                    terms: vec![Term::Var("Y".to_string())],
+                }],
             }],
-        }]);
+        };
 
-        let _ = solve(&program);
+        let _ = program.solve();
     }
 
     #[test]
@@ -802,51 +643,54 @@ mod tests {
                 atom!("academicAncestor", var!("Y"), var!("Z"))),
         ]);
 
-        let program = Program(rules);
+        let program = Program { rules };
 
         assert_eq!(parse(program_text).unwrap().1, program)
     }
 
     #[test]
     fn test_cyclic_rules() {
-        let program = Program(vec![
-            rule!(atom!("cycle", var!("X"), var!("Y")) =>
+        let program = Program {
+            rules: vec![
+                rule!(atom!("cycle", var!("X"), var!("Y")) =>
                 atom!("cycle", var!("Y"), var!("X"))),
-            rule!(atom!("cycle", symbol!("a"), symbol!("b"))),
-        ]);
+                rule!(atom!("cycle", symbol!("a"), symbol!("b"))),
+            ],
+        };
 
-        let result = solve(&program);
+        let result = program.solve();
 
-        let expected = KnowledgeBase(
-            vec![
+        let expected = KnowledgeBase {
+            atoms: vec![
                 atom!("cycle", symbol!("a"), symbol!("b")),
                 atom!("cycle", symbol!("b"), symbol!("a")),
             ]
             .into_iter()
             .collect(),
-        );
+        };
 
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_empty_program() {
-        let program = Program(vec![]);
-        let result = solve(&program);
+        let result = Program { rules: vec![] }.solve();
         assert_eq!(result, KnowledgeBase::default());
     }
 
     #[test]
     fn test_multiple_var_occurrences() {
-        let program = Program(vec![
-            rule!(atom!("same", symbol!("a"), symbol!("a"))),
-            rule!(atom!("same", symbol!("b"), symbol!("b"))),
-            // Rule: reflexive(X, X) :- same(X, X)
-            rule!(atom!("reflexive", var!("X"), var!("X")) =>
+        let program = Program {
+            rules: vec![
+                rule!(atom!("same", symbol!("a"), symbol!("a"))),
+                rule!(atom!("same", symbol!("b"), symbol!("b"))),
+                // Rule: reflexive(X, X) :- same(X, X)
+                rule!(atom!("reflexive", var!("X"), var!("X")) =>
                 atom!("same", var!("X"), var!("X"))),
-        ]);
+            ],
+        };
 
-        let result = solve(&program);
+        let result = program.solve();
 
         let expected_atoms = vec![
             atom!("same", symbol!("a"), symbol!("a")),
@@ -857,6 +701,6 @@ mod tests {
         .into_iter()
         .collect();
 
-        assert_eq!(result.0, expected_atoms);
+        assert_eq!(result.atoms, expected_atoms);
     }
 }
