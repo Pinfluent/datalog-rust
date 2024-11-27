@@ -374,7 +374,7 @@ mod tests {
             },
         ];
 
-        let expected_substitutions = vec![
+        let expected_substitutions = [
             Substitution {
                 mapping: [
                     (

@@ -103,8 +103,8 @@ pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
             panic!("The second atom is assumed to be ground")
         }
 
-        match a_term {
-            &Term::Var(_) => {
+        match *a_term {
+            Term::Var(_) => {
                 let substituted = subs.lookup(a_term);
                 match substituted {
                     Some(a_term @ Term::Sym(_)) if a_term != b_term => {
@@ -115,7 +115,7 @@ pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
                     }
                 }
             }
-            &Term::Sym(_) if a_term != b_term => {
+            Term::Sym(_) if a_term != b_term => {
                 return None;
             }
             _ => {}
