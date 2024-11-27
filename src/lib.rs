@@ -67,22 +67,20 @@ impl Program {
 
     /// Returns `true` if `kb' have changed.
     fn immediate_consequence(&self, kb: &mut KnowledgeBase) -> bool {
-        let mut new_knowledge = HashSet::new();
-
-        let mut new_knowledge_discovered = false;
+        let mut new_knowledge = vec![];
         for atom in self.rules.iter().flat_map(|rule| rule.eval(kb).atoms) {
             if !kb.atoms.contains(&atom) {
-                new_knowledge_discovered = true;
+                new_knowledge.push(atom);
             }
-
-            new_knowledge.insert(atom);
         }
 
-        if new_knowledge_discovered {
-            kb.atoms = new_knowledge;
-        }
+        if !new_knowledge.is_empty() {
+            kb.atoms.extend(new_knowledge.into_iter());
 
-        new_knowledge_discovered
+            true
+        } else {
+            false
+        }
     }
 }
 
