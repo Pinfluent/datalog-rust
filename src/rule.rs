@@ -92,7 +92,6 @@ pub fn eval_atom(
     new_subs
 }
 
-/// None means contradiction. Some means that we've found valid substitutions.
 pub fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;

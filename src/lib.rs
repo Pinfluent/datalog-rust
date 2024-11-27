@@ -374,57 +374,61 @@ mod tests {
             },
         ];
 
-        assert_eq!(
-            vec![
-                Substitution {
-                    mapping: [
-                        (
-                            Term::Var("X".to_string()),
-                            Term::Sym("David Wheeler".to_string()),
-                        ),
-                        (
-                            Term::Var("Y".to_string()),
-                            Term::Sym("Andy Hopper".to_string()),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-                Substitution {
-                    mapping: [
-                        (
-                            Term::Var("Y".to_string(),),
-                            Term::Sym("Alan Mycroft".to_string(),),
-                        ),
-                        (
-                            Term::Var("X".to_string(),),
-                            Term::Sym("Rod Burstall".to_string(),),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-                Substitution {
-                    mapping: [
-                        (
-                            Term::Var("Y".to_string(),),
-                            Term::Sym("Alan Mycroft".to_string(),),
-                        ),
-                        (
-                            Term::Var("X".to_string(),),
-                            Term::Sym("Robin Milner".to_string(),),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-            ],
-            rule::eval_atom(&kb, &atom, all_subs)
-        )
+        let expected_substitutions = vec![
+            Substitution {
+                mapping: [
+                    (
+                        Term::Var("X".to_string()),
+                        Term::Sym("David Wheeler".to_string()),
+                    ),
+                    (
+                        Term::Var("Y".to_string()),
+                        Term::Sym("Andy Hopper".to_string()),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [
+                    (
+                        Term::Var("Y".to_string()),
+                        Term::Sym("Alan Mycroft".to_string()),
+                    ),
+                    (
+                        Term::Var("X".to_string()),
+                        Term::Sym("Rod Burstall".to_string()),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            },
+            Substitution {
+                mapping: [
+                    (
+                        Term::Var("Y".to_string()),
+                        Term::Sym("Alan Mycroft".to_string()),
+                    ),
+                    (
+                        Term::Var("X".to_string()),
+                        Term::Sym("Robin Milner".to_string()),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            },
+        ];
+
+        let result = rule::eval_atom(&kb, &atom, all_subs);
+        assert_eq!(expected_substitutions.len(), result.len());
+
+        for i in 0..result.len() {
+            assert!(result.contains(&expected_substitutions[i]));
+            assert!(expected_substitutions.contains(&result[i]));
+        }
     }
 
     #[test]
-    #[ignore = "It fails now as Rule::eval now writes to a knowledge base, so expected result will also contain old knowledge base"]
     fn eval_rule_projection() {
         let advisers = [
             ("Andrew Rice", "Mistral Contrastin"),
@@ -435,17 +439,19 @@ mod tests {
             ("Robin Milner", "Alan Mycroft"),
         ];
 
+        let adviser_facts: HashSet<_> = advisers
+            .iter()
+            .map(|(adviser, student)| Atom {
+                pred_sym: "adviser".to_string(),
+                terms: vec![
+                    Term::Sym(adviser.to_string()),
+                    Term::Sym(student.to_string()),
+                ],
+            })
+            .collect();
+
         let mut kb = KnowledgeBase {
-            atoms: advisers
-                .iter()
-                .map(|(adviser, student)| Atom {
-                    pred_sym: "adviser".to_string(),
-                    terms: vec![
-                        Term::Sym(adviser.to_string()),
-                        Term::Sym(student.to_string()),
-                    ],
-                })
-                .collect(),
+            atoms: adviser_facts.clone(),
         };
 
         let rule = Rule {
@@ -468,6 +474,7 @@ mod tests {
                         pred_sym: "onlyAdvisor".to_string(),
                         terms: vec![Term::Sym(adviser.to_string()),],
                     })
+                    .chain(adviser_facts.into_iter())
                     .collect(),
             },
             kb
