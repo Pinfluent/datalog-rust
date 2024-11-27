@@ -28,7 +28,7 @@ impl Rule {
             .body
             .iter()
             .fold(vec![Substitution::default()], |all_subs, atom| {
-                eval_atom(kb, atom, &all_subs)
+                eval_atom(kb, atom, all_subs)
             });
 
         let extension: Vec<_> = substitutions
@@ -70,7 +70,11 @@ impl Rule {
     }
 }
 
-pub fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: &[Substitution]) -> Vec<Substitution> {
+pub fn eval_atom(
+    kb: &KnowledgeBase,
+    atom: &Atom,
+    all_subs: Vec<Substitution>,
+) -> Vec<Substitution> {
     let mut new_subs = vec![];
 
     for substitution in all_subs {

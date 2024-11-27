@@ -419,7 +419,7 @@ mod tests {
                     .collect(),
                 },
             ],
-            rule::eval_atom(&kb, &atom, &all_subs)
+            rule::eval_atom(&kb, &atom, all_subs)
         )
     }
 
