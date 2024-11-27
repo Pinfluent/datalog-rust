@@ -1,13 +1,17 @@
 use crate::*;
+
 use alloc::format;
-use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete::{alphanumeric0, multispace0, satisfy};
-use nom::combinator::opt;
-use nom::error::ParseError;
-use nom::multi::{many0, separated_list0, separated_list1};
-use nom::sequence::{delimited, preceded};
-use nom::IResult;
+
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{alphanumeric0, multispace0, satisfy},
+    combinator::opt,
+    error::ParseError,
+    multi::{many0, separated_list0, separated_list1},
+    sequence::{delimited, preceded},
+    IResult,
+};
 
 pub fn parse(text: &str) -> IResult<&str, Program> {
     let (text, rules) = many0(ws(rule))(text)?;
