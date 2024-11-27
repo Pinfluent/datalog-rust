@@ -23,18 +23,28 @@ macro_rules! rule {
 }
 
 impl Rule {
-    pub fn eval(&self, kb: &KnowledgeBase) -> KnowledgeBase {
-        KnowledgeBase {
-            atoms: self
-                .body
-                .iter()
-                .fold(vec![Substitution::default()], |all_subs, atom| {
-                    eval_atom(kb, atom, &all_subs)
-                })
-                .iter()
-                .map(|subs| subs.apply_to_atom(&self.head))
-                .collect(),
+    pub fn eval(&self, kb: &mut KnowledgeBase) -> bool {
+        let substitutions = self
+            .body
+            .iter()
+            .fold(vec![Substitution::default()], |all_subs, atom| {
+                eval_atom(kb, atom, &all_subs)
+            });
+
+        let extension: Vec<_> = substitutions
+            .iter()
+            .map(|subs| subs.apply_to_atom(&self.head))
+            .collect();
+
+        let mut changed = false;
+        for atom in extension {
+            if !kb.atoms.contains(&atom) {
+                changed = true;
+                kb.atoms.insert(atom);
+            }
         }
+
+        changed
     }
 
     /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
