@@ -17,7 +17,7 @@ pub struct Atom {
 #[macro_export]
 macro_rules! atom {
     ($pred_sym:expr, $($term:expr),*) => {
-        Atom {
+        $crate::Atom {
             pred_sym: $pred_sym.to_string(),
             terms: vec![$($term),*]
         }
@@ -33,14 +33,14 @@ pub enum Term {
 #[macro_export]
 macro_rules! var {
     ($name:expr) => {
-        Term::Var($name.to_string())
+        $crate::Term::Var($name.to_string())
     };
 }
 
 #[macro_export]
 macro_rules! symbol {
     ($name:expr) => {
-        Term::Sym($name.to_string())
+        $crate::Term::Sym($name.to_string())
     };
 }
 
@@ -116,13 +116,13 @@ pub struct Rule {
 #[macro_export]
 macro_rules! rule {
     ($head:expr => $($body:expr),+) => {
-        Rule {
+        $crate::Rule {
             head: $head,
             body: vec![$($body),+],
         }
     };
     ($head:expr) => {
-        Rule {
+        $crate::Rule {
             head: $head,
             body: vec![],
         }
