@@ -50,6 +50,10 @@ pub struct Program {
 }
 
 impl Program {
+    pub fn new(rules: Vec<Rule>) -> Self {
+        Self { rules }
+    }
+
     pub fn solve(&self) -> KnowledgeBase {
         // NOTE: We need to check range restriction
         assert!(
@@ -79,12 +83,12 @@ pub struct KnowledgeBase {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Substitution {
+struct Substitution {
     mapping: HashMap<Term, Term>,
 }
 
 impl Substitution {
-    pub fn lookup(&self, key: &Term) -> Option<&Term> {
+    fn lookup(&self, key: &Term) -> Option<&Term> {
         self.mapping.get(key)
     }
 
@@ -104,9 +108,9 @@ impl Substitution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Rule {
-    head: Atom,
-    body: Vec<Atom>,
+pub struct Rule {
+    pub head: Atom,
+    pub body: Vec<Atom>,
 }
 
 #[macro_export]
