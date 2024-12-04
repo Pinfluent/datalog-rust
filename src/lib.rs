@@ -17,7 +17,7 @@ pub struct Atom {
 #[macro_export]
 macro_rules! atom {
     ($pred_sym:expr, $($term:expr),*) => {
-        Atom {
+        $crate::Atom {
             pred_sym: $pred_sym.to_string(),
             terms: vec![$($term),*]
         }
@@ -33,14 +33,14 @@ pub enum Term {
 #[macro_export]
 macro_rules! var {
     ($name:expr) => {
-        Term::Var($name.to_string())
+        $crate::Term::Var($name.to_string())
     };
 }
 
 #[macro_export]
 macro_rules! symbol {
     ($name:expr) => {
-        Term::Sym($name.to_string())
+        $crate::Term::Sym($name.to_string())
     };
 }
 
@@ -50,6 +50,10 @@ pub struct Program {
 }
 
 impl Program {
+    pub fn new(rules: Vec<Rule>) -> Self {
+        Self { rules }
+    }
+
     pub fn solve(&self) -> KnowledgeBase {
         // NOTE: We need to check range restriction
         assert!(
@@ -79,12 +83,12 @@ pub struct KnowledgeBase {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Substitution {
+struct Substitution {
     mapping: HashMap<Term, Term>,
 }
 
 impl Substitution {
-    pub fn lookup(&self, key: &Term) -> Option<&Term> {
+    fn lookup(&self, key: &Term) -> Option<&Term> {
         self.mapping.get(key)
     }
 
@@ -104,21 +108,21 @@ impl Substitution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Rule {
-    head: Atom,
-    body: Vec<Atom>,
+pub struct Rule {
+    pub head: Atom,
+    pub body: Vec<Atom>,
 }
 
 #[macro_export]
 macro_rules! rule {
     ($head:expr => $($body:expr),+) => {
-        Rule {
+        $crate::Rule {
             head: $head,
             body: vec![$($body),+],
         }
     };
     ($head:expr) => {
-        Rule {
+        $crate::Rule {
             head: $head,
             body: vec![],
         }
