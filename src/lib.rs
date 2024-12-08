@@ -9,7 +9,7 @@ use hashbrown::{HashMap, HashSet};
 mod parsing;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Atom<P, V> {
+pub struct Atom<P: Predicate, V: Value> {
     pub pred_sym: P,
     pub terms: Vec<Term<V>>,
 }
@@ -25,7 +25,7 @@ macro_rules! atom {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Term<V> {
+pub enum Term<V: Value> {
     Var(V),
     Sym(V),
 }
@@ -45,15 +45,17 @@ macro_rules! symbol {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Program<P, V> {
+pub struct Program<P: Predicate, V: Value> {
     rules: Vec<Rule<P, V>>,
 }
 
-impl<P, V> Program<P, V>
-where
-    P: Clone + Eq + Hash,
-    V: Clone + Eq + Hash,
-{
+pub trait Predicate: Clone + Eq + Hash {}
+pub trait Value: Clone + Eq + Hash {}
+
+impl<T: Clone + Eq + Hash> Predicate for T {}
+impl<T: Clone + Eq + Hash> Value for T {}
+
+impl<P: Predicate, V: Value> Program<P, V> {
     pub fn new(rules: Vec<Rule<P, V>>) -> Self {
         Self { rules }
     }
@@ -81,19 +83,11 @@ where
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct KnowledgeBase<P, V>
-where
-    P: Clone + Eq + Hash,
-    V: Clone + Eq + Hash,
-{
+pub struct KnowledgeBase<P: Predicate, V: Value> {
     pub atoms: HashSet<Atom<P, V>>,
 }
 
-impl<P, V> Default for KnowledgeBase<P, V>
-where
-    P: Clone + Eq + Hash,
-    V: Clone + Eq + Hash,
-{
+impl<P: Predicate, V: Value> Default for KnowledgeBase<P, V> {
     fn default() -> Self {
         Self {
             atoms: HashSet::new(),
@@ -102,17 +96,11 @@ where
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Substitution<V>
-where
-    V: Clone + Eq + Hash,
-{
+struct Substitution<V: Value> {
     mapping: HashMap<Term<V>, Term<V>>,
 }
 
-impl<V> Default for Substitution<V>
-where
-    V: Clone + Eq + Hash,
-{
+impl<V: Value> Default for Substitution<V> {
     fn default() -> Self {
         Self {
             mapping: HashMap::new(),
@@ -120,15 +108,12 @@ where
     }
 }
 
-impl<V> Substitution<V>
-where
-    V: Clone + Eq + Hash,
-{
+impl<V: Value> Substitution<V> {
     fn lookup(&self, key: &Term<V>) -> Option<&Term<V>> {
         self.mapping.get(key)
     }
 
-    fn apply_to_atom<P: Clone>(&self, atom: &Atom<P, V>) -> Atom<P, V> {
+    fn apply_to_atom<P: Predicate>(&self, atom: &Atom<P, V>) -> Atom<P, V> {
         let mut atom = atom.clone();
         let terms = atom
             .terms
@@ -144,7 +129,7 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Rule<P, V> {
+pub struct Rule<P: Predicate, V: Value> {
     pub head: Atom<P, V>,
     pub body: Vec<Atom<P, V>>,
 }
@@ -165,11 +150,7 @@ macro_rules! rule {
     }
 }
 
-impl<P, V> Rule<P, V>
-where
-    P: Clone + Eq + Hash,
-    V: Clone + Eq + Hash,
-{
+impl<P: Predicate, V: Value> Rule<P, V> {
     fn eval(&self, kb: &mut KnowledgeBase<P, V>) -> bool {
         let substitutions = self
             .body
@@ -216,15 +197,11 @@ where
     }
 }
 
-fn eval_atom<P, V>(
+fn eval_atom<P: Predicate, V: Value>(
     kb: &KnowledgeBase<P, V>,
     atom: &Atom<P, V>,
     all_subs: Vec<Substitution<V>>,
-) -> Vec<Substitution<V>>
-where
-    P: Clone + Eq + Hash,
-    V: Clone + Eq + Hash,
-{
+) -> Vec<Substitution<V>> {
     let mut new_subs = vec![];
 
     for substitution in all_subs {
@@ -242,11 +219,7 @@ where
     new_subs
 }
 
-fn unify<P, V>(a: &Atom<P, V>, b: &Atom<P, V>) -> Option<Substitution<V>>
-where
-    P: Eq,
-    V: Clone + Eq + Hash,
-{
+fn unify<P: Predicate, V: Value>(a: &Atom<P, V>, b: &Atom<P, V>) -> Option<Substitution<V>> {
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;
     }
