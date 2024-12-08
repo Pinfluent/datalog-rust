@@ -1,6 +1,6 @@
 use crate::*;
 
-use alloc::format;
+use alloc::{format, string::String};
 
 use nom::{
     branch::alt,
@@ -13,12 +13,12 @@ use nom::{
     IResult,
 };
 
-pub fn parse(text: &str) -> IResult<&str, Program> {
+pub fn parse(text: &str) -> IResult<&str, Program<String, String>> {
     let (text, rules) = many0(ws(rule))(text)?;
     Ok((text, Program { rules }))
 }
 
-fn rule(text: &str) -> IResult<&str, Rule> {
+fn rule(text: &str) -> IResult<&str, Rule<String, String>> {
     let (text, head) = ws(atom)(text)?;
     let (text, body) = opt(preceded(tag(":-"), separated_list1(tag(","), ws(atom))))(text)?;
     let (text, _) = tag(".")(text)?;
@@ -31,7 +31,7 @@ fn rule(text: &str) -> IResult<&str, Rule> {
     ))
 }
 
-fn atom(text: &str) -> IResult<&str, Atom> {
+fn atom(text: &str) -> IResult<&str, Atom<String, String>> {
     let (text, pred_sym0) = satisfy(|c| c.is_ascii_lowercase())(text)?;
     let (text, pred_sym_rest) = alphanumeric0(text)?;
     let pred_sym = format!("{pred_sym0}{pred_sym_rest}");
@@ -46,21 +46,21 @@ fn atom(text: &str) -> IResult<&str, Atom> {
     ))
 }
 
-fn term_list(text: &str) -> IResult<&str, Vec<Term>> {
+fn term_list(text: &str) -> IResult<&str, Vec<Term<String>>> {
     separated_list0(tag(","), ws(term))(text)
 }
 
-fn term(text: &str) -> IResult<&str, Term> {
+fn term(text: &str) -> IResult<&str, Term<String>> {
     alt((symbol, var))(text)
 }
 
-fn symbol(text: &str) -> IResult<&str, Term> {
+fn symbol(text: &str) -> IResult<&str, Term<String>> {
     let (remainder, contents) =
         delimited(tag("\""), many0(satisfy(|c| c != '"')), tag("\""))(text)?;
     Ok((remainder, Term::Sym(String::from_iter(contents))))
 }
 
-fn var(text: &str) -> IResult<&str, Term> {
+fn var(text: &str) -> IResult<&str, Term<String>> {
     let (text, initial) = satisfy(|c| c.is_ascii_uppercase())(text)?;
     let (remainder, rest) = alphanumeric0(text)?;
     Ok((remainder, Term::Var(format!("{initial}{rest}"))))
