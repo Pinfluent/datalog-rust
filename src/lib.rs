@@ -1,17 +1,17 @@
 #![no_std]
 
 extern crate alloc;
-
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
+use core::hash::Hash;
 use hashbrown::{HashMap, HashSet};
 
 #[cfg(any(feature = "parsing", test))]
 mod parsing;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Atom {
-    pub pred_sym: String,
-    pub terms: Vec<Term>,
+pub struct Atom<P, V> {
+    pub pred_sym: P,
+    pub terms: Vec<Term<V>>,
 }
 
 #[macro_export]
@@ -25,9 +25,9 @@ macro_rules! atom {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Term {
-    Var(String),
-    Sym(String),
+pub enum Term<V> {
+    Var(V),
+    Sym(V),
 }
 
 #[macro_export]
@@ -45,17 +45,20 @@ macro_rules! symbol {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Program {
-    rules: Vec<Rule>,
+pub struct Program<P, V> {
+    rules: Vec<Rule<P, V>>,
 }
 
-impl Program {
-    pub fn new(rules: Vec<Rule>) -> Self {
+impl<P, V> Program<P, V>
+where
+    P: Clone + Eq + Hash,
+    V: Clone + Eq + Hash,
+{
+    pub fn new(rules: Vec<Rule<P, V>>) -> Self {
         Self { rules }
     }
 
-    pub fn solve(&self) -> KnowledgeBase {
-        // NOTE: We need to check range restriction
+    pub fn solve(&self) -> KnowledgeBase<P, V> {
         assert!(
             self.rules.iter().all(Rule::is_range_restricted),
             "all rules must be range-restricted"
@@ -77,22 +80,55 @@ impl Program {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct KnowledgeBase {
-    pub atoms: HashSet<Atom>,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KnowledgeBase<P, V>
+where
+    P: Clone + Eq + Hash,
+    V: Clone + Eq + Hash,
+{
+    pub atoms: HashSet<Atom<P, V>>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct Substitution {
-    mapping: HashMap<Term, Term>,
+impl<P, V> Default for KnowledgeBase<P, V>
+where
+    P: Clone + Eq + Hash,
+    V: Clone + Eq + Hash,
+{
+    fn default() -> Self {
+        Self {
+            atoms: HashSet::new(),
+        }
+    }
 }
 
-impl Substitution {
-    fn lookup(&self, key: &Term) -> Option<&Term> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Substitution<V>
+where
+    V: Clone + Eq + Hash,
+{
+    mapping: HashMap<Term<V>, Term<V>>,
+}
+
+impl<V> Default for Substitution<V>
+where
+    V: Clone + Eq + Hash,
+{
+    fn default() -> Self {
+        Self {
+            mapping: HashMap::new(),
+        }
+    }
+}
+
+impl<V> Substitution<V>
+where
+    V: Clone + Eq + Hash,
+{
+    fn lookup(&self, key: &Term<V>) -> Option<&Term<V>> {
         self.mapping.get(key)
     }
 
-    fn apply_to_atom(&self, atom: &Atom) -> Atom {
+    fn apply_to_atom<P: Clone>(&self, atom: &Atom<P, V>) -> Atom<P, V> {
         let mut atom = atom.clone();
         let terms = atom
             .terms
@@ -108,9 +144,9 @@ impl Substitution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Rule {
-    pub head: Atom,
-    pub body: Vec<Atom>,
+pub struct Rule<P, V> {
+    pub head: Atom<P, V>,
+    pub body: Vec<Atom<P, V>>,
 }
 
 #[macro_export]
@@ -129,8 +165,12 @@ macro_rules! rule {
     }
 }
 
-impl Rule {
-    fn eval(&self, kb: &mut KnowledgeBase) -> bool {
+impl<P, V> Rule<P, V>
+where
+    P: Clone + Eq + Hash,
+    V: Clone + Eq + Hash,
+{
+    fn eval(&self, kb: &mut KnowledgeBase<P, V>) -> bool {
         let substitutions = self
             .body
             .iter()
@@ -154,9 +194,8 @@ impl Rule {
         changed
     }
 
-    /// Rule is range restricted when [Rule::head] contains only vars that're also present in [Rule::body].
     fn is_range_restricted(&self) -> bool {
-        let body_vars: HashSet<Term> = self
+        let body_vars: HashSet<Term<V>> = self
             .body
             .iter()
             .flat_map(|atom| atom.terms.clone())
@@ -177,7 +216,15 @@ impl Rule {
     }
 }
 
-fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: Vec<Substitution>) -> Vec<Substitution> {
+fn eval_atom<P, V>(
+    kb: &KnowledgeBase<P, V>,
+    atom: &Atom<P, V>,
+    all_subs: Vec<Substitution<V>>,
+) -> Vec<Substitution<V>>
+where
+    P: Clone + Eq + Hash,
+    V: Clone + Eq + Hash,
+{
     let mut new_subs = vec![];
 
     for substitution in all_subs {
@@ -195,7 +242,11 @@ fn eval_atom(kb: &KnowledgeBase, atom: &Atom, all_subs: Vec<Substitution>) -> Ve
     new_subs
 }
 
-fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
+fn unify<P, V>(a: &Atom<P, V>, b: &Atom<P, V>) -> Option<Substitution<V>>
+where
+    P: Eq,
+    V: Clone + Eq + Hash,
+{
     if a.pred_sym != b.pred_sym || a.terms.len() != b.terms.len() {
         return None;
     }
@@ -206,7 +257,7 @@ fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
             panic!("The second atom is assumed to be ground")
         }
 
-        match *a_term {
+        match a_term {
             Term::Var(_) => {
                 let substituted = subs.lookup(a_term);
                 match substituted {
@@ -230,7 +281,7 @@ fn unify(a: &Atom, b: &Atom) -> Option<Substitution> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::ToString as _;
+    use alloc::string::{String, ToString as _};
 
     use super::{parsing::parse, *};
 
@@ -606,7 +657,7 @@ mod tests {
     #[test]
     #[should_panic = "all rules must be range-restricted"]
     fn rules_are_range_restricted() {
-        let program: Program = Program {
+        let program: Program<String, String> = Program {
             rules: vec![Rule {
                 head: Atom {
                     pred_sym: "rangeUnrestricted".to_string(),
@@ -678,8 +729,8 @@ mod tests {
 
     #[test]
     fn test_empty_program() {
-        let result = Program { rules: vec![] }.solve();
-        assert_eq!(result, KnowledgeBase::default());
+        let result = Program::<String, String> { rules: vec![] }.solve();
+        assert_eq!(result, KnowledgeBase::<String, String>::default());
     }
 
     #[test]
@@ -706,5 +757,123 @@ mod tests {
         .collect();
 
         assert_eq!(result.atoms, expected_atoms);
+    }
+
+    // Using enums for compact representation
+    #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+    enum Predicate {
+        Parent,
+        Ancestor,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+    enum Person {
+        Alice,
+        Bob,
+        Carol,
+        David,
+    }
+
+    #[test]
+    fn test_enum_types() {
+        let rules = vec![
+            // Parent facts
+            rule!(Atom {
+                pred_sym: Predicate::Parent,
+                terms: vec![Term::Sym(Person::Alice), Term::Sym(Person::Bob)]
+            }),
+            rule!(Atom {
+                pred_sym: Predicate::Parent,
+                terms: vec![Term::Sym(Person::Bob), Term::Sym(Person::Carol)]
+            }),
+            // Ancestor rules
+            Rule {
+                head: Atom {
+                    pred_sym: Predicate::Ancestor,
+                    terms: vec![Term::Var(Person::David), Term::Var(Person::Alice)],
+                },
+                body: vec![Atom {
+                    pred_sym: Predicate::Parent,
+                    terms: vec![Term::Var(Person::David), Term::Var(Person::Alice)],
+                }],
+            },
+        ];
+
+        let result = Program { rules }.solve();
+
+        // Check if original parent relationships are preserved
+        assert!(result.atoms.contains(&Atom {
+            pred_sym: Predicate::Parent,
+            terms: vec![Term::Sym(Person::Alice), Term::Sym(Person::Bob)]
+        }));
+    }
+
+    // Using integers for compact representation
+    #[test]
+    fn test_integer_types() {
+        // Using u32 for both predicates and terms
+        let rules = vec![
+            // Facts: edge(1,2), edge(2,3)
+            rule!(Atom {
+                pred_sym: 1u32,
+                terms: vec![Term::Sym(1u32), Term::Sym(2u32)]
+            }),
+            rule!(Atom {
+                pred_sym: 1u32,
+                terms: vec![Term::Sym(2u32), Term::Sym(3u32)]
+            }),
+            // Rule: path(X,Y) :- edge(X,Y)
+            Rule {
+                head: Atom {
+                    pred_sym: 2u32, // path
+                    terms: vec![Term::Var(0u32), Term::Var(1u32)],
+                },
+                body: vec![Atom {
+                    pred_sym: 1u32, // edge
+                    terms: vec![Term::Var(0u32), Term::Var(1u32)],
+                }],
+            },
+        ];
+
+        let result = Program { rules }.solve();
+
+        // Check if paths were derived
+        assert!(result.atoms.contains(&Atom {
+            pred_sym: 2u32,
+            terms: vec![Term::Sym(1u32), Term::Sym(2u32)]
+        }));
+        assert!(result.atoms.contains(&Atom {
+            pred_sym: 2u32,
+            terms: vec![Term::Sym(2u32), Term::Sym(3u32)]
+        }));
+    }
+
+    // Test mixing different sized types
+    #[test]
+    fn test_mixed_sizes() {
+        let rules = vec![
+            // Using u8 for predicate and u32 for terms
+            rule!(Atom {
+                pred_sym: 1u8,
+                terms: vec![Term::Sym(1000u32), Term::Sym(2000u32)]
+            }),
+            Rule {
+                head: Atom {
+                    pred_sym: 2u8,
+                    terms: vec![Term::Var(0u32), Term::Var(1u32)],
+                },
+                body: vec![Atom {
+                    pred_sym: 1u8,
+                    terms: vec![Term::Var(0u32), Term::Var(1u32)],
+                }],
+            },
+        ];
+
+        let result = Program { rules }.solve();
+
+        assert!(result.atoms.contains(&Atom {
+            pred_sym: 2u8,
+            terms: vec![Term::Sym(1000u32), Term::Sym(2000u32)]
+        }));
     }
 }
